@@ -125,7 +125,7 @@ def handle_approval(update: Update, context: CallbackContext):
         vouch["image"].seek(0)  # Ensure the file pointer is at the start
 
      # Capitalize the first letter of the product name
-    product_name = vouch["product_name"].capitalize()
+    product_name = f"**{vouch['product_name'].upper()}**"
     
     # Process approval or denial
     if action == "approve":
