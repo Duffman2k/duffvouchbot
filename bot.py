@@ -8,6 +8,7 @@ import os
 TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID")
 bot = Bot(TOKEN)
+CUSTOM_EMOJI_ID = "5839247436094117331"
 
 # URL of the watermark image
 WATERMARK_URL = 'https://i.imgur.com/rZTD37V.png'
@@ -130,7 +131,8 @@ def handle_approval(update: Update, context: CallbackContext):
             bot.send_photo(
                 chat_id=CHANNEL_ID,
                 photo=vouch["image"],
-                caption=f"🍺{vouch['product_name']}"
+                caption=f"<tg-emoji emoji-id=\"{CUSTOM_EMOJI_ID}\"></tg-emoji> {vouch['product_name']}",  # Use the custom emoji ID here
+                parse_mode="HTML"  # Set parse mode to HTML to render the custom emoji
             )
         except Exception as e:
             print(f"Error posting to channel: {e}")
