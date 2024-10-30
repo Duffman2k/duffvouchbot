@@ -16,12 +16,7 @@ jobs:
     - name: Set up Fly.io CLI
       run: |
         curl -L https://fly.io/install.sh | sh
-        echo "$HOME/.fly/bin" >> $GITHUB_PATH  # Persist Fly.io CLI in the PATH across steps
-
-    - name: Authenticate with Fly.io
-      env:
-        FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-      run: fly auth login
+        echo "$HOME/.fly/bin" >> $GITHUB_PATH
 
     - name: Deploy to Fly.io
       env:
