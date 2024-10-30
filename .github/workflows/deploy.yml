@@ -1,0 +1,29 @@
+name: Deploy to Fly.io
+
+on:
+  push:
+    branches:
+      - main  # Change this if your primary branch is named differently
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Fly.io CLI
+      run: |
+        curl -L https://fly.io/install.sh | sh
+        export PATH="$HOME/.fly/bin:$PATH"
+
+    - name: Authenticate with Fly.io
+      env:
+        FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      run: fly auth token
+
+    - name: Deploy to Fly.io
+      env:
+        FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      run: fly deploy --remote-only
