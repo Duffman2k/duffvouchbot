@@ -124,6 +124,9 @@ def handle_approval(update: Update, context: CallbackContext):
         pending_vouches.remove(vouch)
         vouch["image"].seek(0)  # Ensure the file pointer is at the start
 
+     # Capitalize the first letter of the product name
+    product_name = vouch["product_name"].capitalize()
+    
     # Process approval or denial
     if action == "approve":
         query.edit_message_caption(caption="Vouch Approved ✅")
@@ -131,7 +134,7 @@ def handle_approval(update: Update, context: CallbackContext):
             bot.send_photo(
                 chat_id=CHANNEL_ID,
                 photo=vouch["image"],
-                caption=f'<tg-emoji emoji-id="{CUSTOM_EMOJI_ID}"></tg-emoji> {vouch["product_name"]}',
+                caption=f'🍺 {product_name}',  # Use the beer emoji and capitalized product name
                 parse_mode="HTML"  # Set parse mode to HTML to render the custom emoji
             )
         except Exception as e:
