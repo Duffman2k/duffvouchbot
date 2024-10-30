@@ -125,7 +125,7 @@ def handle_approval(update: Update, context: CallbackContext):
         vouch["image"].seek(0)  # Ensure the file pointer is at the start
 
      # Capitalize the first letter of the product name
-    product_name = f"**{vouch['product_name'].upper()}**"
+    product_name = f"{vouch['product_name'].upper()}"
     
     # Process approval or denial
     if action == "approve":
@@ -134,7 +134,7 @@ def handle_approval(update: Update, context: CallbackContext):
             bot.send_photo(
                 chat_id=CHANNEL_ID,
                 photo=vouch["image"],
-                caption=f'🍺 {product_name}',  # Use the beer emoji and capitalized product name
+                caption=f'🍺 <b>{vouch["product_name"].upper()}</b>',
                 parse_mode="HTML"  # Set parse mode to HTML to render the custom emoji
             )
         except Exception as e:
