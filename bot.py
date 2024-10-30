@@ -131,7 +131,7 @@ def handle_approval(update: Update, context: CallbackContext):
             bot.send_photo(
                 chat_id=CHANNEL_ID,
                 photo=vouch["image"],
-                caption=f"<tg-emoji emoji-id=\"{CUSTOM_EMOJI_ID}\"></tg-emoji> {vouch['product_name']}",  # Use the custom emoji ID here
+                caption=f'<tg-emoji emoji-id="{CUSTOM_EMOJI_ID}"></tg-emoji> {vouch["product_name"]}'
                 parse_mode="HTML"  # Set parse mode to HTML to render the custom emoji
             )
         except Exception as e:
