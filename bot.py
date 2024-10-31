@@ -8,8 +8,8 @@ from datetime import datetime, timedelta
 
 TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID")
-DB_CHANNEL_ID = int(os.getenv("DB_CHANNEL_ID"))  # Fetch DB channel ID from secrets
-VIP_GROUP_ID = int(os.getenv("VIP_GROUP_ID"))    # Fetch VIP group ID from secrets
+DB_CHANNEL_ID = int(os.getenv("DB_CHANNEL_ID"))  # DB channel ID
+VIP_GROUP_ID = int(os.getenv("VIP_GROUP_ID"))    # VIP group ID
 
 bot = Bot(TOKEN)
 WATERMARK_URL = 'https://i.imgur.com/rZTD37V.png'
@@ -73,7 +73,6 @@ def apply_watermark(image_url):
             overlay.paste(rotated_watermark, (x, y), rotated_watermark)
     return Image.alpha_composite(base_image, overlay).convert("RGB")
 
-# Database-related functions
 def store_vouch_in_db(vouch_data):
     db_message_text = (
         f"Username: {vouch_data['username']}\n"
@@ -82,7 +81,8 @@ def store_vouch_in_db(vouch_data):
         f"Total vouches past 36 hours: {vouch_data['vouches_past_36_hours']}\n"
         f"Total vouches forever: {vouch_data['total_vouches']}"
     )
-    bot.send_message(chat_id=DB_CHANNEL_ID, text=db_message_text)
+    msg = bot.send_message(chat_id=DB_CHANNEL_ID, text=db_message_text)
+    return msg.message_id  # return the message ID for future updates
 
 def fetch_user_vouch_data(user_id):
     messages = bot.get_chat_history(chat_id=DB_CHANNEL_ID, limit=100)
@@ -112,7 +112,7 @@ def update_vouch_data(user_id, username, approval_time):
             'vouches_past_36_hours': 1,
             'total_vouches': 1
         }
-        store_vouch_in_db(data)
+        message_id = store_vouch_in_db(data)
     else:
         data['vouch_times'].append(approval_time)
         data['vouch_times'] = [t for t in data['vouch_times'] if (now - datetime.fromisoformat(t)).total_seconds() <= 36 * 3600]
@@ -145,11 +145,9 @@ def cleanup_db():
 def admin(update: Update, context: CallbackContext):
     user = update.message.from_user
     if is_admin(user.id):
-        # Display all pending vouches with usernames
         if not pending_vouches:
             update.message.reply_text("No pending vouches.")
             return
-        
         for vouch in pending_vouches:
             keyboard = [
                 [InlineKeyboardButton("Approve", callback_data=f"approve_{vouch['user_id']}"),
@@ -187,9 +185,6 @@ def main():
     dp.add_handler(conv_handler)
     dp.add_handler(CommandHandler("admin", admin))
     dp.add_handler(CallbackQueryHandler(handle_approval, pattern="^(approve|deny)_"))
-
-    # Schedule cleanup to run periodically, e.g., every hour
-    dp.job_queue.run_repeating(lambda c: cleanup_db(), interval=3600, first=10)
 
     updater.start_polling()
     updater.idle()
