@@ -98,6 +98,7 @@ def update_vouch_data(user_id, username, approval_time):
             'vouch_times': [approval_time],
             'vouches_past_36_hours': 1,
             'total_vouches': 1,
+            'is_vip': False,  # Track if the user is already in the VIP group
             'db_message_id': store_vouch_in_db({
                 'username': username,
                 'user_id': user_id,
@@ -116,8 +117,9 @@ def update_vouch_data(user_id, username, approval_time):
         update_db_message(data, data['db_message_id'])
 
     # Check if user should be added to VIP group
-    if vouch_data_storage[user_id]['vouches_past_36_hours'] >= 10:
+    if vouch_data_storage[user_id]['vouches_past_36_hours'] >= 10 and not vouch_data_storage[user_id]['is_vip']:
         bot.invite_chat_member(chat_id=VIP_GROUP_ID, user_id=user_id)
+        vouch_data_storage[user_id]['is_vip'] = True  # Mark as VIP
 
 def update_db_message(data, message_id):
     updated_text = (
