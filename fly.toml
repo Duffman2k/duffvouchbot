@@ -10,11 +10,11 @@ primary_region = "cdg"
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = false
+  auto_stop_machines = false   # Keep this false to ensure the bot stays active
   auto_start_machines = true
   min_machines_running = 1
 
 [[vm]]
-  memory = "1gb"
+  memory = "256mb"             # Keep memory low to reduce costs
   cpu_kind = "shared"
-  cpus = 1
+  cpus = 1                     # Limit CPU to 1
