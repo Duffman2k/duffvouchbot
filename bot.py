@@ -184,8 +184,15 @@ def fix_usernames_in_db_channel(update: Update, context: CallbackContext):
         update.message.reply_text("You do not have admin privileges to use this command.")
         return
 
-    messages = bot.get_chat_history(chat_id=DB_CHANNEL_ID, limit=100)  # Adjust limit if needed
+    update.message.reply_text("Starting to fix usernames in the DB channel...")
 
+    try:
+        messages = bot.get_chat_history(chat_id=DB_CHANNEL_ID, limit=100)  # Adjust limit if needed
+    except Exception as e:
+        update.message.reply_text(f"Error retrieving messages: {e}")
+        return
+
+    fixed_count = 0
     for message in messages:
         user_id_match = re.search(r"UserID: (\d+)", message.text)
         if not user_id_match:
@@ -210,10 +217,14 @@ def fix_usernames_in_db_channel(update: Update, context: CallbackContext):
                 parse_mode=ParseMode.MARKDOWN
             )
             print(f"Updated message for UserID {user_id} with correct username: {correct_username}")
+            fixed_count += 1
         except Exception as e:
             print(f"Error updating message for UserID {user_id}: {e}")
         
         time.sleep(1)  # Rate limiting
+
+    update.message.reply_text(f"Finished fixing usernames. Total messages updated: {fixed_count}")
+
 
 def main():
     updater = Updater(TOKEN, use_context=True)
