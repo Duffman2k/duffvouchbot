@@ -76,7 +76,6 @@ def apply_watermark(image_url):
     return Image.alpha_composite(base_image, overlay).convert("RGB")
 
 def store_vouch_in_db(vouch_data):
-    # Store vouch information in DB channel
     db_message_text = (
         f"Username: {vouch_data['username']}\n"
         f"UserID: {vouch_data['user_id']}\n"
@@ -85,12 +84,11 @@ def store_vouch_in_db(vouch_data):
         f"Total vouches forever: {vouch_data['total_vouches']}"
     )
     msg = bot.send_message(chat_id=DB_CHANNEL_ID, text=db_message_text)
-    return msg.message_id  # Return the message ID for future updates
+    return msg.message_id
 
 def update_vouch_data(user_id, username, approval_time):
     now = datetime.utcnow()
 
-    # If the user has no record in the in-memory DB, create one
     if user_id not in vouch_data_storage:
         vouch_data_storage[user_id] = {
             'username': username,
@@ -98,7 +96,7 @@ def update_vouch_data(user_id, username, approval_time):
             'vouch_times': [approval_time],
             'vouches_past_36_hours': 1,
             'total_vouches': 1,
-            'is_vip': False,  # Track if the user is already in the VIP group
+            'is_vip': False,
             'db_message_id': store_vouch_in_db({
                 'username': username,
                 'user_id': user_id,
@@ -108,7 +106,6 @@ def update_vouch_data(user_id, username, approval_time):
             })
         }
     else:
-        # Update existing vouch record
         data = vouch_data_storage[user_id]
         data['vouch_times'].append(approval_time)
         data['vouch_times'] = [t for t in data['vouch_times'] if (now - datetime.fromisoformat(t)).total_seconds() <= 36 * 3600]
@@ -116,10 +113,9 @@ def update_vouch_data(user_id, username, approval_time):
         data['total_vouches'] += 1
         update_db_message(data, data['db_message_id'])
 
-    # Check if user should be added to VIP group
     if vouch_data_storage[user_id]['vouches_past_36_hours'] >= 10 and not vouch_data_storage[user_id]['is_vip']:
         bot.invite_chat_member(chat_id=VIP_GROUP_ID, user_id=user_id)
-        vouch_data_storage[user_id]['is_vip'] = True  # Mark as VIP
+        vouch_data_storage[user_id]['is_vip'] = True
 
 def update_db_message(data, message_id):
     updated_text = (
@@ -134,11 +130,9 @@ def update_db_message(data, message_id):
 def cleanup_db():
     now = datetime.utcnow()
     for user_id, data in list(vouch_data_storage.items()):
-        # Only retain vouches within the last 36 hours
         data['vouch_times'] = [t for t in data['vouch_times'] if (now - datetime.fromisoformat(t)).total_seconds() <= 36 * 3600]
         data['vouches_past_36_hours'] = len(data['vouch_times'])
 
-        # Remove user data if no recent vouches
         if data['vouches_past_36_hours'] == 0:
             bot.delete_message(chat_id=DB_CHANNEL_ID, message_id=data['db_message_id'])
             del vouch_data_storage[user_id]
@@ -173,7 +167,22 @@ def handle_approval(update: Update, context: CallbackContext):
         query.edit_message_caption(caption="Vouch Approved ✅")
         approval_time = datetime.utcnow().isoformat()
         bot.send_photo(chat_id=CHANNEL_ID, photo=vouch["image"], caption=f'🍺 <b>{vouch["product_name"].upper()}</b>', parse_mode="HTML")
-        update_vouch_data(user_id=user_id, username=query.from_user.username, approval_time=approval_time)
+        update_vouch_data(user_id=user_id, username=vouch["username"], approval_time=approval_time)
+
+# New function to fetch user IDs from DB channel messages
+def get_user_ids(update: Update, context: CallbackContext):
+    user = update.message.from_user
+    if is_admin(user.id):
+        messages = bot.get_chat(DB_CHANNEL_ID).messages  # Fetch messages from DB channel
+        user_ids = set()
+        for message in messages:
+            # Parse user ID from message text if present
+            if "UserID:" in message.text:
+                user_id = int(message.text.split("UserID: ")[1].split("\n")[0])
+                user_ids.add(user_id)
+        update.message.reply_text(f"User IDs from vouches: {', '.join(map(str, user_ids))}")
+    else:
+        update.message.reply_text("You do not have admin privileges to use this command.")
 
 def main():
     updater = Updater(TOKEN, use_context=True)
@@ -186,8 +195,8 @@ def main():
     dp.add_handler(conv_handler)
     dp.add_handler(CommandHandler("admin", admin))
     dp.add_handler(CallbackQueryHandler(handle_approval, pattern="^(approve|deny)_"))
+    dp.add_handler(CommandHandler("id", get_user_ids))  # Register the new /id command
 
-    # Schedule cleanup to run periodically, e.g., every hour
     dp.job_queue.run_repeating(lambda c: cleanup_db(), interval=3600, first=10)
 
     updater.start_polling()
