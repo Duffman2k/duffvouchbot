@@ -1,10 +1,12 @@
-from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
 from telegram.ext import CommandHandler, MessageHandler, Filters, CallbackContext, Updater, CallbackQueryHandler, ConversationHandler
 from PIL import Image
 import requests
 from io import BytesIO
 import os
 from datetime import datetime, timedelta
+import re
+import time
 
 TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
@@ -76,6 +78,7 @@ def apply_watermark(image_url):
     return Image.alpha_composite(base_image, overlay).convert("RGB")
 
 def store_vouch_in_db(vouch_data):
+    # Store vouch information in DB channel
     db_message_text = (
         f"Username: {vouch_data['username']}\n"
         f"UserID: {vouch_data['user_id']}\n"
@@ -84,11 +87,12 @@ def store_vouch_in_db(vouch_data):
         f"Total vouches forever: {vouch_data['total_vouches']}"
     )
     msg = bot.send_message(chat_id=DB_CHANNEL_ID, text=db_message_text)
-    return msg.message_id
+    return msg.message_id  # Return the message ID for future updates
 
 def update_vouch_data(user_id, username, approval_time):
     now = datetime.utcnow()
 
+    # If the user has no record in the in-memory DB, create one
     if user_id not in vouch_data_storage:
         vouch_data_storage[user_id] = {
             'username': username,
@@ -96,7 +100,7 @@ def update_vouch_data(user_id, username, approval_time):
             'vouch_times': [approval_time],
             'vouches_past_36_hours': 1,
             'total_vouches': 1,
-            'is_vip': False,
+            'is_vip': False,  # Track if the user is already in the VIP group
             'db_message_id': store_vouch_in_db({
                 'username': username,
                 'user_id': user_id,
@@ -106,6 +110,7 @@ def update_vouch_data(user_id, username, approval_time):
             })
         }
     else:
+        # Update existing vouch record
         data = vouch_data_storage[user_id]
         data['vouch_times'].append(approval_time)
         data['vouch_times'] = [t for t in data['vouch_times'] if (now - datetime.fromisoformat(t)).total_seconds() <= 36 * 3600]
@@ -113,9 +118,10 @@ def update_vouch_data(user_id, username, approval_time):
         data['total_vouches'] += 1
         update_db_message(data, data['db_message_id'])
 
+    # Check if user should be added to VIP group
     if vouch_data_storage[user_id]['vouches_past_36_hours'] >= 10 and not vouch_data_storage[user_id]['is_vip']:
         bot.invite_chat_member(chat_id=VIP_GROUP_ID, user_id=user_id)
-        vouch_data_storage[user_id]['is_vip'] = True
+        vouch_data_storage[user_id]['is_vip'] = True  # Mark as VIP
 
 def update_db_message(data, message_id):
     updated_text = (
@@ -130,9 +136,11 @@ def update_db_message(data, message_id):
 def cleanup_db():
     now = datetime.utcnow()
     for user_id, data in list(vouch_data_storage.items()):
+        # Only retain vouches within the last 36 hours
         data['vouch_times'] = [t for t in data['vouch_times'] if (now - datetime.fromisoformat(t)).total_seconds() <= 36 * 3600]
         data['vouches_past_36_hours'] = len(data['vouch_times'])
 
+        # Remove user data if no recent vouches
         if data['vouches_past_36_hours'] == 0:
             bot.delete_message(chat_id=DB_CHANNEL_ID, message_id=data['db_message_id'])
             del vouch_data_storage[user_id]
@@ -167,22 +175,45 @@ def handle_approval(update: Update, context: CallbackContext):
         query.edit_message_caption(caption="Vouch Approved ✅")
         approval_time = datetime.utcnow().isoformat()
         bot.send_photo(chat_id=CHANNEL_ID, photo=vouch["image"], caption=f'🍺 <b>{vouch["product_name"].upper()}</b>', parse_mode="HTML")
-        update_vouch_data(user_id=user_id, username=vouch["username"], approval_time=approval_time)
+        update_vouch_data(user_id=user_id, username=query.from_user.username, approval_time=approval_time)
 
-# New function to fetch user IDs from DB channel messages
-def get_user_ids(update: Update, context: CallbackContext):
+# New function to fix usernames in DB channel messages
+def fix_usernames_in_db_channel(update: Update, context: CallbackContext):
     user = update.message.from_user
-    if is_admin(user.id):
-        messages = bot.get_chat(DB_CHANNEL_ID).messages  # Fetch messages from DB channel
-        user_ids = set()
-        for message in messages:
-            # Parse user ID from message text if present
-            if "UserID:" in message.text:
-                user_id = int(message.text.split("UserID: ")[1].split("\n")[0])
-                user_ids.add(user_id)
-        update.message.reply_text(f"User IDs from vouches: {', '.join(map(str, user_ids))}")
-    else:
+    if not is_admin(user.id):
         update.message.reply_text("You do not have admin privileges to use this command.")
+        return
+
+    messages = bot.get_chat_history(chat_id=DB_CHANNEL_ID, limit=100)  # Adjust limit if needed
+
+    for message in messages:
+        user_id_match = re.search(r"UserID: (\d+)", message.text)
+        if not user_id_match:
+            continue
+        
+        user_id = int(user_id_match.group(1))
+        
+        try:
+            user_info = bot.get_chat(user_id)
+            correct_username = user_info.username or "No Username"
+        except Exception as e:
+            print(f"Error fetching username for UserID {user_id}: {e}")
+            continue
+        
+        corrected_text = re.sub(r"Username: \S+", f"Username: {correct_username}", message.text)
+        
+        try:
+            bot.edit_message_text(
+                chat_id=DB_CHANNEL_ID,
+                message_id=message.message_id,
+                text=corrected_text,
+                parse_mode=ParseMode.MARKDOWN
+            )
+            print(f"Updated message for UserID {user_id} with correct username: {correct_username}")
+        except Exception as e:
+            print(f"Error updating message for UserID {user_id}: {e}")
+        
+        time.sleep(1)  # Rate limiting
 
 def main():
     updater = Updater(TOKEN, use_context=True)
@@ -194,8 +225,8 @@ def main():
     )
     dp.add_handler(conv_handler)
     dp.add_handler(CommandHandler("admin", admin))
+    dp.add_handler(CommandHandler("fixusernames", fix_usernames_in_db_channel))  # Temporary command to fix usernames
     dp.add_handler(CallbackQueryHandler(handle_approval, pattern="^(approve|deny)_"))
-    dp.add_handler(CommandHandler("id", get_user_ids))  # Register the new /id command
 
     dp.job_queue.run_repeating(lambda c: cleanup_db(), interval=3600, first=10)
 
