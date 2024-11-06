@@ -5,8 +5,6 @@ import requests
 from io import BytesIO
 import os
 from datetime import datetime, timedelta
-import re
-import time
 
 TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
@@ -54,7 +52,21 @@ def receive_image(update: Update, context: CallbackContext):
         update.message.reply_text("Failed to process the image.")
         return ConversationHandler.END
 
-    pending_vouches.append({"user_id": user.id, "username": user.username, "image": image_bytes, "product_name": product_name})
+    # Capture and store both username and user_id
+    username = user.username or "No Username"  # Handle cases where username might be None
+    pending_vouches.append({
+        "user_id": user.id,
+        "username": username,
+        "image": image_bytes,
+        "product_name": product_name
+    })
+    
+    # Optional: Send confirmation to DB channel
+    bot.send_message(
+        chat_id=DB_CHANNEL_ID,
+        text=f"New vouch submission:\nUsername: @{username}\nUserID: {user.id}\nProduct: {product_name}"
+    )
+    
     user_data.pop(user.id, None)
     update.message.reply_text("Your vouch has been submitted for approval.")
     return ConversationHandler.END
@@ -78,7 +90,6 @@ def apply_watermark(image_url):
     return Image.alpha_composite(base_image, overlay).convert("RGB")
 
 def store_vouch_in_db(vouch_data):
-    # Store vouch information in DB channel
     db_message_text = (
         f"Username: {vouch_data['username']}\n"
         f"UserID: {vouch_data['user_id']}\n"
@@ -92,7 +103,6 @@ def store_vouch_in_db(vouch_data):
 def update_vouch_data(user_id, username, approval_time):
     now = datetime.utcnow()
 
-    # If the user has no record in the in-memory DB, create one
     if user_id not in vouch_data_storage:
         vouch_data_storage[user_id] = {
             'username': username,
@@ -100,7 +110,7 @@ def update_vouch_data(user_id, username, approval_time):
             'vouch_times': [approval_time],
             'vouches_past_36_hours': 1,
             'total_vouches': 1,
-            'is_vip': False,  # Track if the user is already in the VIP group
+            'is_vip': False,
             'db_message_id': store_vouch_in_db({
                 'username': username,
                 'user_id': user_id,
@@ -110,7 +120,6 @@ def update_vouch_data(user_id, username, approval_time):
             })
         }
     else:
-        # Update existing vouch record
         data = vouch_data_storage[user_id]
         data['vouch_times'].append(approval_time)
         data['vouch_times'] = [t for t in data['vouch_times'] if (now - datetime.fromisoformat(t)).total_seconds() <= 36 * 3600]
@@ -118,10 +127,9 @@ def update_vouch_data(user_id, username, approval_time):
         data['total_vouches'] += 1
         update_db_message(data, data['db_message_id'])
 
-    # Check if user should be added to VIP group
     if vouch_data_storage[user_id]['vouches_past_36_hours'] >= 10 and not vouch_data_storage[user_id]['is_vip']:
         bot.invite_chat_member(chat_id=VIP_GROUP_ID, user_id=user_id)
-        vouch_data_storage[user_id]['is_vip'] = True  # Mark as VIP
+        vouch_data_storage[user_id]['is_vip'] = True
 
 def update_db_message(data, message_id):
     updated_text = (
@@ -136,11 +144,9 @@ def update_db_message(data, message_id):
 def cleanup_db():
     now = datetime.utcnow()
     for user_id, data in list(vouch_data_storage.items()):
-        # Only retain vouches within the last 36 hours
         data['vouch_times'] = [t for t in data['vouch_times'] if (now - datetime.fromisoformat(t)).total_seconds() <= 36 * 3600]
         data['vouches_past_36_hours'] = len(data['vouch_times'])
 
-        # Remove user data if no recent vouches
         if data['vouches_past_36_hours'] == 0:
             bot.delete_message(chat_id=DB_CHANNEL_ID, message_id=data['db_message_id'])
             del vouch_data_storage[user_id]
@@ -174,58 +180,13 @@ def handle_approval(update: Update, context: CallbackContext):
     if action == "approve":
         query.edit_message_caption(caption="Vouch Approved ✅")
         approval_time = datetime.utcnow().isoformat()
-        bot.send_photo(chat_id=CHANNEL_ID, photo=vouch["image"], caption=f'🍺 <b>{vouch["product_name"].upper()}</b>', parse_mode="HTML")
-        update_vouch_data(user_id=user_id, username=query.from_user.username, approval_time=approval_time)
-
-# New function to fix usernames in DB channel messages
-def fix_usernames_in_db_channel(update: Update, context: CallbackContext):
-    user = update.message.from_user
-    if not is_admin(user.id):
-        update.message.reply_text("You do not have admin privileges to use this command.")
-        return
-
-    update.message.reply_text("Starting to fix usernames in the DB channel...")
-
-    try:
-        messages = bot.get_chat_history(chat_id=DB_CHANNEL_ID, limit=100)  # Adjust limit if needed
-    except Exception as e:
-        update.message.reply_text(f"Error retrieving messages: {e}")
-        return
-
-    fixed_count = 0
-    for message in messages:
-        user_id_match = re.search(r"UserID: (\d+)", message.text)
-        if not user_id_match:
-            continue
-        
-        user_id = int(user_id_match.group(1))
-        
-        try:
-            user_info = bot.get_chat(user_id)
-            correct_username = user_info.username or "No Username"
-        except Exception as e:
-            print(f"Error fetching username for UserID {user_id}: {e}")
-            continue
-        
-        corrected_text = re.sub(r"Username: \S+", f"Username: {correct_username}", message.text)
-        
-        try:
-            bot.edit_message_text(
-                chat_id=DB_CHANNEL_ID,
-                message_id=message.message_id,
-                text=corrected_text,
-                parse_mode=ParseMode.MARKDOWN
-            )
-            print(f"Updated message for UserID {user_id} with correct username: {correct_username}")
-            fixed_count += 1
-        except Exception as e:
-            print(f"Error updating message for UserID {user_id}: {e}")
-        
-        time.sleep(1)  # Rate limiting
-
-    update.message.reply_text(f"Finished fixing usernames. Total messages updated: {fixed_count}")
-
-
+        bot.send_photo(
+            chat_id=CHANNEL_ID,
+            photo=vouch["image"],
+            caption=f'🍺 <b>{vouch["product_name"].upper()}</b> by @{vouch["username"]}',
+            parse_mode="HTML"
+        )
+        update_vouch_data(user_id=user_id, username=vouch["username"], approval_time=approval_time)
 
 def main():
     updater = Updater(TOKEN, use_context=True)
@@ -237,11 +198,8 @@ def main():
     )
     dp.add_handler(conv_handler)
     dp.add_handler(CommandHandler("admin", admin))
-    dp.add_handler(CommandHandler("fixusernames", fix_usernames_in_db_channel))  # Temporary command to fix usernames
     dp.add_handler(CallbackQueryHandler(handle_approval, pattern="^(approve|deny)_"))
-
     dp.job_queue.run_repeating(lambda c: cleanup_db(), interval=3600, first=10)
-
     updater.start_polling()
     updater.idle()
 
