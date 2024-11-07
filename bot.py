@@ -134,7 +134,7 @@ def handle_approval(update: Update, context: CallbackContext):
         bot.send_photo(
             chat_id=PUBLIC_CHANNEL_ID,
             photo=query.message.photo[-1].file_id,
-            caption=f"🍺 <b>{product_name.upper()}</b> - @{username}",
+            caption=f"🍺 <b>{product_name.upper()}</b>",
             parse_mode="HTML"
         )
 
@@ -143,26 +143,43 @@ def handle_approval(update: Update, context: CallbackContext):
             doc = doc_ref.get()
             if doc.exists:
                 user_vouch_data = doc.to_dict()
-                recent_vouches = [v for v in user_vouch_data["recent_vouch_times"] if (datetime.utcnow() - v).total_seconds() <= 36 * 3600]
+                # Convert recent_vouch_times strings to datetime objects
+                recent_vouches = [
+                    datetime.fromisoformat(v) if isinstance(v, str) else v
+                    for v in user_vouch_data["recent_vouch_times"]
+                ]
+                # Filter out vouches older than 36 hours
+                recent_vouches = [
+                    v for v in recent_vouches
+                    if (datetime.utcnow() - v).total_seconds() <= 36 * 3600
+                ]
+                # Append the current time
                 recent_vouches.append(datetime.utcnow())
-                doc_ref.update({
+
+                update_data = {
                     "username": username,
-                    "recent_vouch_times": recent_vouches,
-                    "total_vouches": firestore.Increment(1)
-                })
+                    "recent_vouch_times": [v.isoformat() for v in recent_vouches],  # Save as ISO strings
+                    "total_vouches": firestore.Increment(1),
+                }
+
+                # Add VIP check if applicable
                 if len(recent_vouches) >= 10 and not user_vouch_data.get("is_vip", False):
                     bot.invite_chat_member(chat_id=VIP_GROUP_ID, user_id=user_id)
-                    doc_ref.update({"is_vip": True})
+                    update_data["is_vip"] = True
+
+                logger.info(f"Updating Firestore for user {user_id} with data: {update_data}")
+                doc_ref.update(update_data)
+                logger.info(f"Successfully updated Firestore for user {user_id}")
             else:
                 doc_ref.set({
                     "username": username,
-                    "recent_vouch_times": [datetime.utcnow()],
+                    "recent_vouch_times": [datetime.utcnow().isoformat()],
                     "total_vouches": 1,
                     "is_vip": False
                 })
-            logger.info(f"Vouch approved and recorded in Firestore for user {user_id}.")
+                logger.info(f"New document created for user {user_id}")
         except Exception as e:
-            logger.error(f"Error updating Firestore for user {user_id}: {e}")
+            logger.error(f"Failed to update Firestore for user {user_id}: {e}")
 
         query.answer("Vouch approved and posted.")
 
