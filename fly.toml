@@ -1,5 +1,5 @@
 app = "duffvouchbot"
-primary_region = "cdg"
+primary_region = "iad"
 
 [build]
   dockerfile = "Dockerfile"
