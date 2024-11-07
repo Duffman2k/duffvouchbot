@@ -12,3 +12,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Run the bot
 CMD ["python", "bot.py"]
+
+# Install any dependencies from requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt && pip show firebase-admin
