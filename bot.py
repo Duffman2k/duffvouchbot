@@ -143,7 +143,7 @@ def handle_approval(update: Update, context: CallbackContext):
             doc = doc_ref.get()
             if doc.exists:
                 user_vouch_data = doc.to_dict()
-                # Convert recent_vouch_times strings to datetime objects
+                # Ensure each item in recent_vouch_times is processed as a datetime string, not a list
                 recent_vouches = [
                     datetime.fromisoformat(v.rstrip('Z')) if isinstance(v, str) else v
                     for v in user_vouch_data["recent_vouch_times"]
