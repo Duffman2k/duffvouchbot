@@ -21,4 +21,4 @@ jobs:
     - name: Deploy to Fly.io
       env:
         FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-      run: fly deploy --remote-only
+      run: fly deploy --remote-only --no-cache

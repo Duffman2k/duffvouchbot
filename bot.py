@@ -6,6 +6,7 @@ import requests
 from io import BytesIO
 import os
 from datetime import datetime, timedelta
+import json
 import firebase_admin
 from firebase_admin import credentials, firestore
 
@@ -13,9 +14,10 @@ from firebase_admin import credentials, firestore
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize Firebase Admin SDK
+# Load Firebase credentials from environment variable
 try:
-    cred = credentials.Certificate("vouchbotproject-firebase-adminsdk-f4zzj-17eee49830.json")  # Replace with actual filename
+    firebase_credentials = json.loads(os.getenv("FIREBASE_CREDENTIALS"))
+    cred = credentials.Certificate(firebase_credentials)
     firebase_admin.initialize_app(cred)
     logger.info("Firebase initialized successfully.")
 except Exception as e:
@@ -66,11 +68,9 @@ def receive_image(update: Update, context: CallbackContext):
         update.message.reply_text("Failed to process the image.")
         return ConversationHandler.END
 
-    # Get current time and username
     username = user.username or "No Username"
     submission_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
 
-    # Post watermarked image in approval channel with Approve/Deny buttons
     keyboard = [
         [InlineKeyboardButton("Approve", callback_data=f"approve_{user.id}"),
          InlineKeyboardButton("Deny", callback_data=f"deny_{user.id}")]

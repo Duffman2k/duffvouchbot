@@ -7,11 +7,8 @@ WORKDIR /app
 # Copy the current directory contents into the container at /app
 COPY . /app
 
-# Install any dependencies from requirements.txt
+# Install dependencies with no cache to force install every time
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Run the bot
 CMD ["python", "bot.py"]
-
-# Install any dependencies from requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt && pip show firebase-admin
