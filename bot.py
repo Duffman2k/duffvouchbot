@@ -183,7 +183,7 @@ def handle_approval(update: Update, context: CallbackContext):
         bot.send_photo(
             chat_id=CHANNEL_ID,
             photo=vouch["image"],
-            caption=f'🍺 <b>{vouch["product_name"].upper()}</b> by @{vouch["username"]}',
+            caption=f'🍺 <b>{vouch["product_name"].upper()}</b>',
             parse_mode="HTML"
         )
         update_vouch_data(user_id=user_id, username=vouch["username"], approval_time=approval_time)
