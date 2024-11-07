@@ -145,7 +145,7 @@ def handle_approval(update: Update, context: CallbackContext):
                 user_vouch_data = doc.to_dict()
                 # Convert recent_vouch_times strings to datetime objects
                 recent_vouches = [
-                    datetime.fromisoformat(v) if isinstance(v, str) else v
+                    datetime.fromisoformat(v.rstrip('Z')) if isinstance(v, str) else v
                     for v in user_vouch_data["recent_vouch_times"]
                 ]
                 # Filter out vouches older than 36 hours
@@ -158,7 +158,7 @@ def handle_approval(update: Update, context: CallbackContext):
 
                 update_data = {
                     "username": username,
-                    "recent_vouch_times": [v.isoformat() for v in recent_vouches],  # Save as ISO strings
+                    "recent_vouch_times": [v.isoformat() + 'Z' for v in recent_vouches],  # Save as ISO strings with UTC 'Z'
                     "total_vouches": firestore.Increment(1),
                 }
 
@@ -173,7 +173,7 @@ def handle_approval(update: Update, context: CallbackContext):
             else:
                 doc_ref.set({
                     "username": username,
-                    "recent_vouch_times": [datetime.utcnow().isoformat()],
+                    "recent_vouch_times": [datetime.utcnow().isoformat() + 'Z'],
                     "total_vouches": 1,
                     "is_vip": False
                 })
